@@ -17,24 +17,15 @@ action :run do
   name = new_resource.name
   settle_time = new_resource.settle_time
 
-  unless ::File.exists?("/sys/module/ipmi_devintf") and ::File.exists?("/sys/module/ipmi_si")
-    # Make sure the IPMI kernel modules are installed
-    bash "install-ipmi_si" do
-      code "/sbin/modprobe ipmi_si"
-      not_if { ::File.exists?("/sys/module/ipmi_si") }
-      returns [0,1]
-      ignore_failure true
-    end
- 
-    bash "install-devintf" do
-      code "/sbin/modprobe ipmi_devintf"
-      not_if { ::File.exists?("/sys/module/ipmi_devintf") }
-      returns [0,1]
-      ignore_failure true
-    end
-
-    bash "settle ipmi load" do
-      code "sleep #{settle_time}"
+  ruby_block "Load IPMI" do
+    block do
+      return true if node[:ipmi][:bmc_enable]
+      if Chef::Recipe::IPMI.enable()
+        Chef::Recipe::IPMI.message "IPMI enabled. Settling for #{settle_time}"
+        sleep settle_time.to_i
+      else
+        Chef::Recipe::IPMI.message "Could not enable IPMI"
+      end
     end
   end
 end

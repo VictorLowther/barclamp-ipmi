@@ -17,31 +17,10 @@ action :run do
   name = new_resource.name
   settle_time = new_resource.settle_time
 
-  if ::File.exists?("/sys/module/ipmi_devintf") or ::File.exists?("/sys/module/ipmi_si")
-    # Make sure the IPMI kernel modules are removed
-    bash "remove-ipmi_si" do
-      code "/sbin/rmmod ipmi_si"
-      only_if { ::File.exists?("/sys/module/ipmi_si") }
-      returns [0,1]
-      ignore_failure true
-    end
- 
-    bash "remove-devintf" do
-      code "/sbin/rmmod ipmi_devintf"
-      only_if { ::File.exists?("/sys/module/ipmi_devintf") }
-      returns [0,1]
-      ignore_failure true
-    end
-
-    bash "remove-msghandler" do
-      code "/sbin/rmmod ipmi_msghandler"
-      only_if { ::File.exists?("/sys/module/ipmi_msghandler") }
-      returns [0,1]
-      ignore_failure true
-    end
-
-    bash "settle ipmi unload" do
-      code "sleep #{settle_time}"
+  ruby_block "Disable IPMI" do
+    block do
+      Chef::Recipe::IPMI.disable
+      sleep settle_time.to_i
     end
   end
 end

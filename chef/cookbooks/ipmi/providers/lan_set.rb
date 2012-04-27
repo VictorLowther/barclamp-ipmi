@@ -15,43 +15,27 @@
 
 ## utility to check if a lan parameter needs to be set 
 ## (if it's current value is different than desired one).
-def check_ipmi_lan_value(header, desired)
-  c_awk = "awk -F: '/^#{header}[ \\t]*:/ { print $2 }'"
-  current = %x{ipmitool lan print 1 | #{c_awk} }
-  current = current.chomp.strip
-  current.casecmp(desired) == 0
-end
-
 action :run do
   name = new_resource.name
   command = new_resource.command
   value = new_resource.value
   settle_time = new_resource.settle_time
-
-  if ::File.exists?("/sys/module/ipmi_si")
-    unless check_ipmi_lan_value(name, value)
-      # Set BMC LAN parameters 
-      bash "#{name} settle time" do
-        code "sleep #{settle_time}"
-        action :nothing
+  if ! node[:ipmi][:bmc_enable]
+    Chef::Recipe::IPMI.message "IPMI not configured, will not configure #{name}"
+  elif ! Chef::Recipe::IPMI[name] == value
+    ruby_block "set bmc lan value #{name}" do
+      block do
+        Chef::Recipe::IPMI[name] = command
+        sleep settle_time.to_i
       end
-
-      bash "bmc-set-lan-#{name}" do
-        code <<-EOH
-#{command}
-EOH
-        notifies :run, resources(:bash => "#{name} settle time"), :immediately
-      end 
-
-      node["crowbar_wall"]["status"]["ipmi"]["messages"] << "#{name} set to #{value}" unless node.nil?
-    else
-      node["crowbar_wall"]["status"]["ipmi"]["messages"] << "#{name} already set to #{value}" unless node.nil?
     end
-
-    node["crowbar_wall"]["status"]["ipmi"]["address_set"] = true if name == "IP Address"
+    Chef::Recipe::IPMI.message "#{name} set to #{value}"
+    if name == "IP Address"
+      node["crowbar_wall"]["status"]["ipmi"]["address_set"] = true
+    end
   else
-    node["crowbar_wall"]["status"]["ipmi"]["messages"] << "Unsupported product found #{node[:dmi][:system][:product_name]} - skipping IPMI:#{name}" unless node.nil?
-  end  
+    Chef::Recipe::IPMI.message "#{name} already set to #{value}"
+  end
   node.save
 end
 

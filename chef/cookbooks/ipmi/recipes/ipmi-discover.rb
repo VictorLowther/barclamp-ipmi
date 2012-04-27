@@ -18,42 +18,14 @@
 
 include_recipe "utils"
 
-unless ::File.exists?("/usr/sbin/ipmitool") or ::File.exists?("/usr/bin/ipmitool")
-  package "ipmitool" do
-    case node[:platform]
-    when "ubuntu","debian"
-      package_name "ipmitool"
-    when "redhat","centos"
-      package_name "OpenIPMI-tools"
-    end
-    action :install
-  end
-end
+return unless Chef::Recipe::IPMI.enable()
+Chef::Recipe::IPMI.message "Performing initial discovery of IPMI"
 
-unsupported = [ "KVM", "Bochs", "VMWare Virtual Platform", "VMware Virtual Platform", "VirtualBox" ]
+node["crowbar_wall"]["ipmi"]["address"] = Chef::Recipe::IPMI["IP Address"]
+node["crowbar_wall"]["ipmi"]["gateway"] = Chef::Recipe::IPMI["Default Gateway IP"]
+node["crowbar_wall"]["ipmi"]["netmask"] = Chef::Recipe::IPMI["Subnet Mask"]
+node["crowbar_wall"]["ipmi"]["mode"] = Chef::Recipe::IPMI["Interface Mode"]
+node.save
 
-if node[:ipmi][:bmc_enable]
-  if unsupported.member?(node[:dmi][:system][:product_name])
-    node["crowbar_wall"] = {} unless node["crowbar_wall"]
-    node["crowbar_wall"]["status"] = {} unless node["crowbar_wall"]["status"]
-    node["crowbar_wall"]["status"]["ipmi"] = {} unless node["crowbar_wall"]["status"]["ipmi"]
-    node["crowbar_wall"]["status"]["ipmi"]["messages"] = [ "Unsupported platform: #{node[:dmi][:system][:product_name]} - turning off ipmi for this node" ]
-    node[:ipmi][:bmc_enable] = false
-    node.save
-    return
-  end
-
-  %x{modprobe ipmi_si ; modprobe ipmi_devintf ; sleep 15}
-  %x{ipmitool lan print 1 > /tmp/lan.print}
-
-  node["crowbar_wall"] = {} unless node["crowbar_wall"]
-  node["crowbar_wall"]["ipmi"] = {} unless node["crowbar_wall"]["ipmi"]
-  node["crowbar_wall"]["ipmi"]["address"] = %x{grep "IP Address   " /tmp/lan.print | awk -F" " '\{print $4\}'}.strip
-  node["crowbar_wall"]["ipmi"]["gateway"] = %x{grep "Default Gateway IP " /tmp/lan.print | awk -F" " '\{ print $5 \}'}.strip
-  node["crowbar_wall"]["ipmi"]["netmask"] = %x{grep "Subnet Mask" /tmp/lan.print | awk -F" " '\{ print $4 \}'}.strip
-  node["crowbar_wall"]["ipmi"]["mode"] = %x{ipmitool delloem lan get}.strip
-  node.save
-
-  %x{rmmod ipmi_si ; rmmod ipmi_devintf ; rmmod ipmi_msghandler}
-end
+Chef::Recipe::IPMI.disable()
 
